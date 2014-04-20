@@ -49,7 +49,7 @@ Router.prototype.transmission = function transmission(req, namespace, format, ca
      */
     var formatRegexp = function formatRegexp(format) {
         format = format.replace(/[\-{}\[\]+?.,\\\^$|#\s]/g, '\\$&')
-                       .replace(/%.{1}/g, '(.*?)');
+                       .replace(/%.{1}/g, '(.+?)');
         return new RegExp('^' + format + '$');
     };
 
@@ -58,7 +58,7 @@ Router.prototype.transmission = function transmission(req, namespace, format, ca
      */
     var formatString = function formatString() {
         var args = Array.prototype.slice.call(arguments);
-        var str = args.shift();
+        var str = args.pop();
 
         for (var i = 0; i < args.length; i++) {
             str = str.replace(/%.{1}/, args[i]);
@@ -111,11 +111,18 @@ Router.prototype.transmission = function transmission(req, namespace, format, ca
     format = format || '%s.%s:%s';
     var regexp = format && formatRegexp(format);
     var match = req.match(regexp);
+
+    if (!match) {
+        beezlib.logger.debug('data format is illegal');
+        return callback && callback('data format is illegal');
+    }
+
     var service = match[1];
     var method = match[2];
     var body = match[3];
 
     try {
+
         body = JSON.parse(body);
         var datas = load(namespace);
         var data = datas[method];
@@ -133,7 +140,7 @@ Router.prototype.transmission = function transmission(req, namespace, format, ca
         }
 
         setTimeout(function() {
-            callback && callback(formatString(format, service, method, JSON.stringify(data)));
+            callback && callback(formatString(service, method, JSON.stringify(data), format));
         }, delay);
 
     } catch (e) {
@@ -153,20 +160,38 @@ Router.prototype.setup = function setup(app) {
         io.of(name).on('connection', function (socket) {
             beezlib.logger.debug('connection start');
 
-            socket.on('message', function (req, format) {
-                beezlib.logger.debug('get message :', req);
-
-                self.transmission(req, name, format, function (data) {
-                    socket.emit('message', data);
-                    socket.broadcast.emit('message', data);
-                });
-            });
 
             socket.on('join', function (room) {
-                if (!_.isEmpty(room)) {
+
+                if (room) {
                     beezlib.logger.debug('join the room :', room);
                     socket.join(room);
+                    socket.set('room', room, function () {
+                        socket.emit('joined');
+                    });
                 }
+
+                socket.on('message', function (req, format) {
+                    beezlib.logger.debug('get message :', req);
+
+                    self.transmission(req, name, format, function (data) {
+                        socket.get('room', function (err, room) {
+                            if (err) {
+                                logger.warn(err);
+                            }
+                            socket.emit('message', data);
+                            if (room) {
+                                beezlib.logger.debug('send message to room :', room, ' namespace: ', name);
+                                socket.broadcast.emit('message', data);
+                            } else {
+                                beezlib.logger.debug('send message to all. namespace: ', name);
+                                socket.broadcast.to(room).emit('message', data);
+                            }
+                        });
+                    });
+
+                });
+
             });
 
         });
