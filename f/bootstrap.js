@@ -102,7 +102,7 @@ Bootstrap.prototype.run = function run(callback) {
                 commander.addmods = _cwdmod;
             }
         } else {
-            console.log('\n## Mode:'.green, '[Configration-file]'.blue, (commander.config || 'configuration file not found.').green);
+            console.log('\n## Mode:'.green, '[Configration-file]'.blue, commander.config.green);
         }
 
         if (!commander.standalone && !commander.config) {
@@ -187,7 +187,7 @@ Bootstrap.prototype.run = function run(callback) {
 
                 mock.dir = path.resolve(path.dirname(commander.config), _mock_from, _mock_path);
 
-                if (!beezlib.fsys.isDirectorySync(mock.dir)) {
+                if (!beezlib.fsys.isDirectorySync(stat.dir)) {
                     beezlib.logger.error('Directory(mock) does not exist. dir:', mock.dir);
                     process.exit(2);
                 }
@@ -207,6 +207,35 @@ Bootstrap.prototype.run = function run(callback) {
                 self.store.mock = null;
             }
 
+        }
+
+        var socket = self.config.app.socket;
+        if (socket && socket.use) {
+            if (socket.include) {
+                var _socket_from = socket.include.from || '.';
+                var _socket_path = socket.include.path || '';
+
+                socket.dir = path.resolve(path.dirname(commander.config), _socket_from, _socket_path);
+
+                if (!beezlib.fsys.isDirectorySync(stat.dir)) {
+                    beezlib.logger.error('Directory(socket) does not exist. dir:', mock.dir);
+                    process.exit(2);
+                }
+
+                try {
+                    self.store.socket = new beezlib.fsys.store.JSONStore(socket.dir);
+                } catch (e) {
+                    beezlib.logger.error(e, 'socket directory path:', socket.dir);
+                    beezlib.logger.debug(e.stack);
+                    process.exit(2);
+                }
+
+            } else {
+                // not mock directory.
+                beezlib.logger.debug('skip stat include files');
+                socket.dir = null;
+                self.store.socket = null;
+            }
         }
 
         // operation command search.
@@ -282,7 +311,7 @@ Bootstrap.prototype.run = function run(callback) {
             process.exit(1);
         });
 
-        callback &&  callback(null);
+        callback && callback(null);
 
     });
 };
